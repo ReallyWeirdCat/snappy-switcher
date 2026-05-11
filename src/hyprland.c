@@ -326,7 +326,8 @@ void switch_to_window(const char *address) {
   if (!address)
     return;
   char cmd[256];
-  snprintf(cmd, sizeof(cmd), "dispatch focuswindow address:%s", address);
+  snprintf(cmd, sizeof(cmd),
+           "dispatch hl.dsp.focus({ window = \"address:%s\" })", address);
   char *resp = hyprland_request(cmd);
   if (resp)
     free(resp);
