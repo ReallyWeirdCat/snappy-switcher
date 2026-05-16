@@ -267,6 +267,7 @@ static void hide_switcher(void) {
 
   visible = false;
   is_configured = false;
+  input_set_toggle_mode(false); /* Reset toggle state to avoid leaking into next session */
 
   if (config && config->follow_monitor) {
     destroy_panel();
@@ -354,15 +355,18 @@ static void handle_command(const char *cmd) {
   if (strcmp(cmd, CMD_TOGGLE) == 0) {
     if (visible)
       hide_switcher();
-    else
+    else {
+      input_set_toggle_mode(true);
       show_switcher();
+    }
     return;
   }
 
   /* Navigation */
-  if (!visible)
+  if (!visible) {
+    input_set_toggle_mode(false);
     show_switcher();
-  else {
+  } else {
     int dir = 0;
     if (strcmp(cmd, CMD_NEXT) == 0)
       dir = 1;
@@ -504,7 +508,8 @@ static int run_daemon(const char *config_path) {
     return 1;
   }
 
-  struct wl_registry *registry = wl_display_get_registry(display);
+  static struct wl_registry *registry = NULL;
+  registry = wl_display_get_registry(display);
   wl_registry_add_listener(registry, &registry_listener, &app_state);
 
   /* 4. Bind Protocols */
@@ -517,6 +522,12 @@ static int run_daemon(const char *config_path) {
   if (!compositor || !layer_shell || !shm) {
     LOG("Failed to bind Wayland protocols");
     backend_cleanup(backend);
+    if (registry)
+      wl_registry_destroy(registry);
+    wl_display_disconnect(display);
+    free_config(config);
+    icons_cleanup();
+    app_state_free(&app_state);
     return 1;
   }
 
@@ -647,6 +658,8 @@ static int run_daemon(const char *config_path) {
     wl_output_destroy(output);
   if (seat)
     wl_seat_destroy(seat);
+  if (registry)
+    wl_registry_destroy(registry);
   if (display)
     wl_display_disconnect(display);
 

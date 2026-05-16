@@ -26,6 +26,7 @@ static const char *dismiss_mod_names[MAX_DISMISS_MODS] = {"Mod1"};
 static int dismiss_mod_count = 1;
 static bool mod_was_held = false;
 static bool ignore_first_release = true;
+static bool toggle_mode = false;
 
 alt_release_callback_t on_alt_release = NULL;
 alt_release_callback_t on_escape = NULL;
@@ -89,10 +90,23 @@ void input_set_dismiss_modifier(const char *mod) {
   LOG("Dismiss modifier: %s (%d)", mod, dismiss_mod_count);
 }
 
+void input_set_toggle_mode(bool enabled) {
+  toggle_mode = enabled;
+}
+
 void input_reset_alt_state(void) {
-  mod_was_held = true;
-  ignore_first_release = true;
-  LOG("Modifier state reset");
+  if (toggle_mode) {
+    /* TOGGLE mode: no modifier is held, so do not arm the dismiss mechanism.
+     * The switcher will only close via Enter, Escape, or a second TOGGLE. */
+    mod_was_held = false;
+    ignore_first_release = false;
+    LOG("Modifier state reset (toggle mode - dismiss on release disabled)");
+  } else {
+    /* NEXT/PREV mode: modifier IS held, arm the standard dismiss-on-release. */
+    mod_was_held = true;
+    ignore_first_release = true;
+    LOG("Modifier state reset");
+  }
 }
 
 static void keyboard_keymap(void *data, struct wl_keyboard *keyboard,
@@ -263,6 +277,13 @@ static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
 
   bool any_held_now = any_dismiss_mod_held();
 
+  /* Toggle mode: modifier release should never dismiss the switcher.
+   * Still track state so we don't carry stale values into the next session. */
+  if (toggle_mode) {
+    mod_was_held = any_held_now;
+    return;
+  }
+
   if (ignore_first_release) {
     ignore_first_release = false;
     if (any_held_now) {
@@ -309,10 +330,16 @@ const struct wl_keyboard_listener *get_keyboard_listener(void) {
 }
 
 void input_cleanup(void) {
-  if (xkb_st)
+  if (xkb_st) {
     xkb_state_unref(xkb_st);
-  if (xkb_keymap)
+    xkb_st = NULL;
+  }
+  if (xkb_keymap) {
     xkb_keymap_unref(xkb_keymap);
-  if (xkb_ctx)
+    xkb_keymap = NULL;
+  }
+  if (xkb_ctx) {
     xkb_context_unref(xkb_ctx);
+    xkb_ctx = NULL;
+  }
 }

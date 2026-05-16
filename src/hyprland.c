@@ -152,7 +152,14 @@ void app_state_free(AppState *state) {
 }
 
 static char *safe_strdup(const char *str) {
-  return str ? strdup(str) : strdup("");
+  char *dup = strdup(str ? str : "");
+  if (!dup) {
+    /* OOM fallback: return empty string from static storage.
+     * Callers must tolerate this — all current callers do. */
+    static char empty[] = "";
+    return empty;
+  }
+  return dup;
 }
 
 int app_state_add(AppState *state, WindowInfo *info) {
@@ -233,6 +240,10 @@ static char *hyprland_request(const char *cmd) {
 
   size_t capacity = BUFFER_SIZE;
   char *resp = malloc(capacity);
+  if (!resp) {
+    close(fd);
+    return NULL;
+  }
   size_t total = 0;
   ssize_t n;
 
@@ -317,6 +328,8 @@ static void aggregate_context(AppState *state) {
 
   int count = state->count;
   WindowInfo *out = malloc(count * sizeof(WindowInfo));
+  if (!out)
+    return;
   int out_count = 0;
 
   for (int i = 0; i < count; i++) {

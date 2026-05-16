@@ -16,6 +16,10 @@ extern alt_release_callback_t on_escape;
 /* Configure which modifier release dismisses the switcher (e.g. "alt", "super") */
 void input_set_dismiss_modifier(const char *mod);
 
+/* Set toggle mode: when true, modifier release will NOT dismiss the switcher.
+ * Used when the switcher is opened via CMD_TOGGLE (no modifier held). */
+void input_set_toggle_mode(bool enabled);
+
 /* Reset modifier state (call when switcher shows to avoid stale detection) */
 void input_reset_alt_state(void);
 
