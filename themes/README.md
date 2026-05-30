@@ -48,20 +48,10 @@ The Liquid Glass themes render as translucent overlays and require compositor bl
 name = liquid-glassW.ini
 ```
 
-```ini
-# In ~/.config/hypr/hyprland.conf
-layerrule = blur, snappy-switcher
-layerrule = ignorealpha 0.01, snappy-switcher
-```
-```ini
-# Just a diff Syntax
-layerrule {
-  name = snappy-switcher-blur
-  match:namespace = snappy-switcher
-  blur = on
-  ignore_alpha = 0.01
-}
-
+```lua
+-- In ~/.config/hypr/hyprland.lua
+hl.layer_rule({ match = { namespace = "snappy-switcher" }, effect = "blur" })
+hl.layer_rule({ match = { namespace = "snappy-switcher" }, effect = "ignorealpha 0.01" })
 ```
 
 ## Theme Locations
@@ -88,6 +78,8 @@ border_color = #89b4faff
 bundle_bg = #313244ff
 badge_bg = #89b4faff
 badge_text_color = #cdd6f4ff
+badge_bg_selected = #89b4faff
+badge_text_color_selected = #1e1e2eff
 ```
 
 All colors use 8-character `#RRGGBBAA` hex codes. The last two digits control transparency (e.g., `ff` = opaque, `80` = 50%, `00` = invisible).

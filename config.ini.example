@@ -32,17 +32,6 @@ show_workspace_badge = true
 # false = Immediately jump to the previous window (index 1)
 sticky_mode = false
 
-# Modifier that dismisses the switcher when released.
-# Examples: alt, super, shift, control
-# 
-# NOTE ON 'SUPER': If you use 'super', you can open and cycle the switcher 
-# normally (e.g., Super+Tab). However, navigating with Super + Arrow Keys 
-# may not work depending on your Wayland compositor (like Hyprland), as the 
-# compositor often intercepts Super+Arrow for its own global binds before 
-# the switcher can see them. 
-# Workaround: Use Super + Alt + Arrow, or change to dismiss_modifier = alt.
-dismiss_modifier = alt
-
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                              THEME SETTINGS                               │
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -108,6 +97,11 @@ max_cols = 5
 # Icon settings
 icon_size = 57
 icon_radius = 15
+
+error_width = 480        # Banner width in pixels (default: 480)
+error_height = 160       # Banner height in pixels (default: 160)
+error_font_size = 13     # Main error text size (default: 13)
+
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                              ICON SETTINGS                                │

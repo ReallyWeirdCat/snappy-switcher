@@ -12,7 +12,7 @@ int wlr_backend_init(void);
 void wlr_backend_cleanup(void);
 
 /* Get windows via wlr protocol */
-int wlr_get_windows(AppState *state, Config *config);
+int wlr_get_windows(AppState *state, Config *config, bool is_linear);
 
 /* Activate window via wlr protocol */
 void wlr_activate_window(const char *identifier);

@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚙️ Snappy Switcher Configuration
+# Snappy Switcher Configuration
 
 *Customize every aspect of your window switcher*
 
@@ -8,17 +8,17 @@
 
 ---
 
-## 📍 Configuration Location
+## Configuration Location
 
 ```
 ~/.config/snappy-switcher/config.ini
 ```
 
-> 💡 **Quick Setup:** Run `snappy-install-config` to create the config file and install themes automatically.
+> **Quick Setup:** Run `snappy-install-config` to create the config file and install themes automatically.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```ini
 [general]
@@ -34,7 +34,7 @@ fallback = hicolor
 
 ---
 
-## 📋 Configuration Sections
+## Configuration Sections
 
 ```mermaid
 %%{
@@ -62,6 +62,7 @@ mindmap
       card size
       spacing
       grid
+      error banner
     icons
       theme
       fallback
@@ -72,7 +73,7 @@ mindmap
 
 ---
 
-## 🎯 [general] — Mode Settings
+## [general] -- Mode Settings
 
 Control how windows are displayed and grouped.
 
@@ -87,7 +88,7 @@ flowchart LR
     end
     
     subgraph Context["mode = context"]
-        C1["App × 3"]
+        C1["App x 3"]
         C2["Browser"]
         C3["Terminal"]
     end
@@ -106,7 +107,6 @@ flowchart LR
 | Key | Values | Default | Description |
 |-----|--------|---------|-------------|
 | `mode` | `overview`, `context` | `context` | Window grouping mode |
-| `dismiss_modifier` | `alt`, `super`, `shift`, `control`, or comma-separated | `alt` | Modifier(s) that dismiss the switcher when released. Must match your Hyprland keybinding. |
 | `show_workspace_badge` | `true`, `false` | `true` | Show workspace indicator badge on each card |
 | `follow_monitor` | `true`, `false` | `false` | Panel follows the focused monitor |
 | `sticky_mode` | `true`, `false` | `false` | When true, opening the switcher retains focus on the currently active window instead of immediately jumping to the previous window. |
@@ -123,7 +123,7 @@ flowchart LR
 mode = context  # Enable intelligent grouping
 ```
 
-### 🏷️ Workspace Badge
+### Workspace Badge
 
 When `show_workspace_badge = true` (the default), each card displays a small pill-shaped tag in its bottom-left corner that tells you **which workspace the window lives on** at a glance.
 
@@ -141,7 +141,7 @@ The renderer inspects each window's `workspace_id` and `workspace_name` (pulled 
 | **Special** | `[S]` | `[S]` | Hyprland special workspace (scratchpad, etc.) |
 | **Special + Floating** | `[S:F]` | `[S:F]` | Floating window on a special workspace |
 
-> 💡 **In plain English:** The badge shows a compact label so you always know *where* a window belongs ~ a number for standard workspaces, a letter for named ones, and `S` for special/scratchpad workspaces. If the window is floating, it gets an extra `F:` prefix so you can tell it apart from tiled windows at a glance.
+> The badge shows a compact label so you always know *where* a window belongs ~ a number for standard workspaces, a letter for named ones, and `S` for special/scratchpad workspaces. If the window is floating, it gets an extra `F:` prefix so you can tell it apart from tiled windows at a glance.
 
 ```ini
 [general]
@@ -150,7 +150,7 @@ show_workspace_badge = true   # Toggle badge visibility
 
 ---
 
-## 🎨 [theme] — Colors & Styling
+## [theme] -- Colors & Styling
 
 All colors use hex format: `#RRGGBB` or `#RRGGBBAA` (with alpha transparency)
 
@@ -183,15 +183,19 @@ graph TB
 | `text_color` | `#cdd6f4ff` | Primary text color |
 | `subtext_color` | `#a6adc8ff` | Secondary/dimmed text |
 | `bundle_bg` | `#313244ff` | Context-mode stacked card background |
-| `badge_bg` | `#89b4faff` | Group count & workspace badge background |
-| `badge_text_color` | `#cdd6f4ff` | Badge text color |
+| `badge_bg` | `#89b4faff` | Group count & workspace badge background (unselected) |
+| `badge_text_color` | `#cdd6f4ff` | Badge text color (unselected) |
+| `badge_bg_selected` | *(falls back to `badge_bg`)* | Badge background when the card is selected. Use a bolder or brighter variant of `badge_bg` for visual contrast. |
+| `badge_text_color_selected` | *(falls back to `badge_text_color`)* | Badge text color when the card is selected. Should contrast with `badge_bg_selected`. |
+
+> **Fallback behavior:** If `badge_bg_selected` or `badge_text_color_selected` are not set in the theme file, the renderer falls back to the standard `badge_bg` and `badge_text_color` values. This keeps older themes working without changes.
 
 ### Border & Corner Options
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `border_width` | `2` | Border thickness (px) |
-| `corner_radius` | `12` | Rounded corner radius (px) |
+| `corner_radius` | `15` | Rounded corner radius (px) |
 
 ```ini
 [theme]
@@ -205,95 +209,37 @@ border_color = #ca9ee6ff
 text_color = #cdd6f4ff
 subtext_color = #6c7086ff
 bundle_bg = #1e1e2eff
-badge_bg = #89b4faff
-badge_text_color = #cdd6f4ff
+badge_bg = #9DC2F9ff
+badge_text_color = #11111bff
+badge_bg_selected = #c1e6ffff
+badge_text_color_selected = #11111bff
 border_width = 2
-corner_radius = 12
+corner_radius = 15
 ```
 
-### 🎭 Available Themes
+### Available Themes
 
-<table>
-<tr>
-<td align="center">🌙</td>
-<td><code>snappy-slate.ini</code></td>
-<td>Default dark theme</td>
-</tr>
-<tr>
-<td align="center">🍫</td>
-<td><code>catppuccin-mocha.ini</code></td>
-<td>Catppuccin Mocha</td>
-</tr>
-<tr>
-<td align="center">☕</td>
-<td><code>catppuccin-latte.ini</code></td>
-<td>Catppuccin Latte (light)</td>
-</tr>
-<tr>
-<td align="center">🫐</td>
-<td><code>catppuccin-frappe.ini</code></td>
-<td>Catppuccin Frappé</td>
-</tr>
-<tr>
-<td align="center">🌌</td>
-<td><code>tokyo-night.ini</code></td>
-<td>Tokyo Night</td>
-</tr>
-<tr>
-<td align="center">❄️</td>
-<td><code>nord.ini</code></td>
-<td>Nord</td>
-</tr>
-<tr>
-<td align="center">🧛</td>
-<td><code>dracula.ini</code></td>
-<td>Dracula</td>
-</tr>
-<tr>
-<td align="center">🪵</td>
-<td><code>gruvbox-dark.ini</code></td>
-<td>Gruvbox Dark</td>
-</tr>
-<tr>
-<td align="center">🌹</td>
-<td><code>rose-pine.ini</code></td>
-<td>Rosé Pine</td>
-</tr>
-<tr>
-<td align="center">🌲</td>
-<td><code>nordic.ini</code></td>
-<td>Nordic variant</td>
-</tr>
-<tr>
-<td align="center">🌿</td>
-<td><code>grovestorm.ini</code></td>
-<td>Grovestorm</td>
-</tr>
-<tr>
-<td align="center">🤖</td>
-<td><code>cyberpunk.ini</code></td>
-<td>Cyberpunk</td>
-</tr>
-<tr>
-<td align="center">⚡</td>
-<td><code>stormlight.ini</code></td>
-<td>Stormlight (yellow Catppuccin-inspired)</td>
-</tr>
-<tr>
-<td align="center">🤍</td>
-<td><code>liquid-glassW.ini</code></td>
-<td>Liquid Glass White (frosted acrylic, needs blur)</td>
-</tr>
-<tr>
-<td align="center">🖤</td>
-<td><code>liquid-glassB.ini</code></td>
-<td>Liquid Glass Black (smoked glass, needs blur)</td>
-</tr>
-</table>
+| Theme | File |
+|-------|------|
+| Snappy Slate (default) | `snappy-slate.ini` |
+| Catppuccin Mocha | `catppuccin-mocha.ini` |
+| Catppuccin Latte | `catppuccin-latte.ini` |
+| Catppuccin Frappe | `catppuccin-frappe.ini` |
+| Tokyo Night | `tokyo-night.ini` |
+| Nord | `nord.ini` |
+| Dracula | `dracula.ini` |
+| Gruvbox Dark | `gruvbox-dark.ini` |
+| Rose Pine | `rose-pine.ini` |
+| Nordic | `nordic.ini` |
+| Grovestorm | `grovestorm.ini` |
+| Cyberpunk | `cyberpunk.ini` |
+| Stormlight | `stormlight.ini` |
+| Liquid Glass White | `liquid-glassW.ini` (needs blur) |
+| Liquid Glass Black | `liquid-glassB.ini` (needs blur) |
 
 ---
 
-## 📐 [layout] — Dimensions & Spacing
+## [layout] -- Dimensions & Spacing
 
 ```mermaid
 graph TB
@@ -309,8 +255,8 @@ graph TB
         end
     end
     
-    P["← padding →"]
-    G["← card_gap →"]
+    P["padding"]
+    G["card_gap"]
     
     style C1 fill:#313244,stroke:#89b4fa,color:#cdd6f4
     style C2 fill:#313244,stroke:#89b4fa,color:#cdd6f4
@@ -330,8 +276,8 @@ graph TB
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `card_gap` | `8` | Gap between cards (px) |
-| `padding` | `16` | Window padding (px) |
+| `card_gap` | `10` | Gap between cards (px) |
+| `padding` | `20` | Window padding (px) |
 
 ### Grid & Icons
 
@@ -339,31 +285,40 @@ graph TB
 |-----|---------|-------------|
 | `max_cols` | `5` | Maximum columns before wrap |
 | `icon_size` | `56` | App icon size (px) |
-| `icon_radius` | `14` | Icon corner radius (px) |
+| `icon_radius` | `12` | Icon corner radius (px) |
+
+### Error Banner
+
+The CONFIG ERROR overlay is rendered when the `--mod` flag does not match the key being held. The overlay now auto-sizes based on content — only the font size is configurable.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `error_font_size` | `13` | Error text font size (pt). Hint text auto-scales to ~70%. |
 
 ```ini
 [layout]
 card_width = 160
 card_height = 140
-card_gap = 8
-padding = 16
+card_gap = 10
+padding = 20
 max_cols = 5
 icon_size = 56
-icon_radius = 14
+icon_radius = 15
+error_font_size = 13
 ```
 
 ---
 
-## 🖼️ [icons] — Icon Theme
+## [icons] -- Icon Theme
 
 ```mermaid
 flowchart LR
     APP["App Class"]
-    APP --> T1["🎨 Primary Theme"]
-    T1 -->|not found| T2["🔄 Fallback Theme"]
-    T2 -->|not found| T3["🔤 Letter Icon"]
+    APP --> T1["Primary Theme"]
+    T1 -->|not found| T2["Fallback Theme"]
+    T2 -->|not found| T3["Letter Icon"]
     
-    T1 -->|found| ICON["✅ Display Icon"]
+    T1 -->|found| ICON["Display Icon"]
     T2 -->|found| ICON
     T3 --> ICON
 
@@ -398,7 +353,7 @@ show_letter_fallback = true
 
 ---
 
-## ✏️ [font] — Typography
+## [font] -- Typography
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -427,14 +382,67 @@ icon_letter_size = 24
 
 ---
 
-## 📄 Complete Example
+## Hyprland Keybindings
+
+Add these to `~/.config/hypr/hyprland.lua`. The `--mod` flag must match the key you are holding in the bind so the switcher knows when to dismiss. If they do not match, you will see a CONFIG ERROR banner.
+
+```lua
+-- Start daemon on login
+hl.on("hyprland.start", function()
+    hl.dispatch(hl.dsp.exec_cmd("snappy-switcher --daemon"))
+end)
+
+-- Alt-Tab (default)
+hl.bind("ALT + Tab", hl.dsp.exec_cmd("snappy-switcher next --mod alt"))
+hl.bind("ALT + SHIFT + Tab", hl.dsp.exec_cmd("snappy-switcher prev --mod alt"))
+
+-- Super-Tab (Workspace Filtered)
+-- hl.bind("SUPER + Tab", hl.dsp.exec_cmd("snappy-switcher next --workspace --mod super"))
+-- hl.bind("SUPER + SHIFT + Tab", hl.dsp.exec_cmd("snappy-switcher prev --workspace --mod super"))
+```
+
+### Non-Modifier Keys as Dismiss
+
+You can use any key as the dismiss trigger, not just modifiers. For example, to dismiss on Space release:
+
+```lua
+hl.bind("SPACE + Tab", hl.dsp.exec_cmd("snappy-switcher next --mod space"))
+```
+
+This uses keycode tracking instead of XKB modifier tracking. See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the dual-track dismiss system.
+
+**Important:** The `--mod` value must match the key in the bind. If you bind `ALT + Tab` but pass `--mod space`, the switcher will show a CONFIG ERROR banner because Space is not being held.
+
+### Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| `snappy-switcher next` (no `--mod`) | Opens in toggle mode. No dismiss-on-release. Close with Escape, Enter, or `toggle`. |
+| `snappy-switcher next --mod alt` in a terminal (not holding Alt) | Toggle mode. No error banner because `SOURCE=cli`. |
+| Bind is `ALT+Tab`, command has `--mod alt` | Normal dismiss-on-release. Closes when Alt is released. |
+| Bind is `ALT+Tab`, command has `--mod ctrl` | CONFIG ERROR banner. Ctrl is not held. Disarmed -- press Escape or Enter to close. |
+| Bind is `ALT+Tab`, command has `--mod space` | CONFIG ERROR banner. Space is not held. Disarmed -- press Escape or Enter to close. |
+| Different binds with different flags | Works correctly. Each bind can use its own `--mod`. E.g., `ALT+Tab` with `--mod alt` and `SUPER+Tab` with `--mod super`. |
+
+### Optional Keybindings
+
+```lua
+-- Toggle visibility
+hl.bind("SUPER + Tab", hl.dsp.exec_cmd("snappy-switcher toggle"))
+
+-- Quick hide
+hl.bind("Escape", hl.dsp.exec_cmd("snappy-switcher hide"))
+```
+
+---
+
+## Complete Example
 
 <details>
-<summary>📋 <b>Click to expand full config.ini</b></summary>
+<summary><b>Click to expand full config.ini</b></summary>
 
 ```ini
 # ~/.config/snappy-switcher/config.ini
-# ═══════════════════════════════════════════════════════════════════
 
 [general]
 mode = context
@@ -449,19 +457,22 @@ border_color = #ca9ee6ff
 text_color = #cdd6f4ff
 subtext_color = #6c7086ff
 bundle_bg = #1e1e2eff
-badge_bg = #ca9ee6ff
-badge_text_color = #1e1e2eff
+badge_bg = #9DC2F9ff
+badge_text_color = #11111bff
+badge_bg_selected = #c1e6ffff
+badge_text_color_selected = #11111bff
 border_width = 2
-corner_radius = 12
+corner_radius = 15
 
 [layout]
 card_width = 160
 card_height = 140
-card_gap = 8
-padding = 16
+card_gap = 10
+padding = 20
 max_cols = 5
 icon_size = 56
-icon_radius = 14
+icon_radius = 15
+error_font_size = 13
 
 [icons]
 theme = Papirus-Dark
@@ -479,37 +490,8 @@ icon_letter_size = 24
 
 ---
 
-## ⌨️ Hyprland Keybindings
-
-Add these to `~/.config/hypr/hyprland.conf`. Use any modifier combo; set `dismiss_modifier` in config to match so the switcher hides when you release the key.
-
-```bash
-# Start daemon on login
-exec-once = snappy-switcher --daemon
-
-# Alt-Tab (default) — set dismiss_modifier = alt
-bind = ALT, Tab, exec, snappy-switcher next
-bind = ALT SHIFT, Tab, exec, snappy-switcher prev
-
-# Or Super-Tab — set dismiss_modifier = super
-# bind = SUPER, Tab, exec, snappy-switcher next
-# bind = SUPER SHIFT, Tab, exec, snappy-switcher prev
-```
-
-### Optional Keybindings
-
-```bash
-# Toggle visibility
-bind = SUPER, Tab, exec, snappy-switcher toggle
-
-# Quick hide
-bind = , Escape, exec, snappy-switcher hide
-```
-
----
-
 <div align="center">
 
-**[← Back to README](../README.md)** · **[Architecture Guide →](ARCHITECTURE.md)**
+**[Back to README](../README.md)** -- **[Architecture Guide](ARCHITECTURE.md)**
 
 </div>

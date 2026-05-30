@@ -428,8 +428,9 @@ static int wlr_compare_focus(const void *a, const void *b) {
   return 0;
 }
 
-int wlr_get_windows(AppState *state, Config *config) {
+int wlr_get_windows(AppState *state, Config *config, bool is_linear) {
   (void)config;
+  (void)is_linear;  /* WLR backend has no workspace-based sorting */
 
   if (!backend_state.initialized) {
     LOG("Backend not initialized");

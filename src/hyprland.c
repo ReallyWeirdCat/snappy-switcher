@@ -125,6 +125,8 @@ void app_state_init(AppState *state) {
   state->selected_index = 0;
   state->width = 200; /* Default safe size */
   state->height = 100;
+  state->error_message = NULL;
+  state->filter_workspace = false;
 }
 
 void window_info_free(WindowInfo *info) {
@@ -148,6 +150,8 @@ void app_state_free(AppState *state) {
     state->windows = NULL;
     state->count = 0;
     state->capacity = 0;
+    free(state->error_message);
+    state->error_message = NULL;
   }
 }
 
@@ -183,6 +187,19 @@ static int compare_mru(const void *a, const void *b) {
   int diff = wa->focus_history_id - wb->focus_history_id;
   if (diff != 0)
     return diff;
+
+  const char *addr_a = wa->address ? wa->address : "";
+  const char *addr_b = wb->address ? wb->address : "";
+  return strcmp(addr_a, addr_b);
+}
+
+/* --- Sorting (Linear: workspace_id ASC, address ASC) --- */
+static int compare_linear(const void *a, const void *b) {
+  const WindowInfo *wa = (const WindowInfo *)a;
+  const WindowInfo *wb = (const WindowInfo *)b;
+
+  if (wa->workspace_id != wb->workspace_id)
+    return wa->workspace_id - wb->workspace_id;
 
   const char *addr_a = wa->address ? wa->address : "";
   const char *addr_b = wb->address ? wb->address : "";
@@ -273,8 +290,51 @@ static char *hyprland_request(const char *cmd) {
   return resp;
 }
 
+/* --- Active Workspace Query --- */
+
+/* Sentinel: no filtering (all workspaces) */
+#define WS_FILTER_NONE -999
+
+/*
+ * Query Hyprland for the currently focused workspace ID.
+ * Returns the integer workspace ID, or WS_FILTER_NONE on failure.
+ */
+static int get_active_workspace_id(void) {
+  char *json_str = hyprland_request("j/activeworkspace");
+  if (!json_str) {
+    LOG("Failed to query active workspace");
+    return WS_FILTER_NONE;
+  }
+
+  struct json_object *root = json_tokener_parse(json_str);
+  free(json_str);
+
+  if (!root) {
+    LOG("Failed to parse active workspace JSON");
+    return WS_FILTER_NONE;
+  }
+
+  struct json_object *id_obj;
+  int ws_id = WS_FILTER_NONE;
+  if (json_object_object_get_ex(root, "id", &id_obj)) {
+    ws_id = json_object_get_int(id_obj);
+    LOG("Active workspace: %d", ws_id);
+  }
+
+  json_object_put(root);
+  return ws_id;
+}
+
 /* --- JSON Parsing --- */
-static int parse_clients(const char *json_str, AppState *state) {
+
+/*
+ * Parse the Hyprland client list JSON into AppState.
+ *
+ * target_ws: if != WS_FILTER_NONE, only include windows whose
+ *            workspace.id matches this value.  Special workspaces
+ *            (id == -1) are always excluded regardless.
+ */
+static int parse_clients(const char *json_str, AppState *state, int target_ws) {
   struct json_object *root = json_tokener_parse(json_str);
   if (!root || !json_object_is_type(root, json_type_array)) {
     if (root)
@@ -285,7 +345,9 @@ static int parse_clients(const char *json_str, AppState *state) {
   size_t len = json_object_array_length(root);
   for (size_t i = 0; i < len; i++) {
     struct json_object *obj = json_object_array_get_idx(root, i);
-    struct json_object *ws_obj, *ws_id, *ws_name, *addr, *title, *cls, *focus, *floating;
+    struct json_object *ws_obj = NULL, *ws_id = NULL, *ws_name = NULL,
+                       *addr = NULL, *title = NULL, *cls = NULL,
+                       *focus = NULL, *floating = NULL;
 
     if (!json_object_object_get_ex(obj, "workspace", &ws_obj))
       continue;
@@ -293,7 +355,13 @@ static int parse_clients(const char *json_str, AppState *state) {
       continue;
 
     int wid = json_object_get_int(ws_id);
-     if (wid == -1) 
+
+    /* Always skip special workspaces (id == -1) */
+    if (wid == -1)
+      continue;
+
+    /* Workspace filter: skip windows not on the target workspace */
+    if (target_ws != WS_FILTER_NONE && wid != target_ws)
       continue;
 
     json_object_object_get_ex(ws_obj, "name", &ws_name);
@@ -383,22 +451,35 @@ static void aggregate_context(AppState *state) {
 }
 
 /* --- Public API --- */
-int update_window_list(AppState *state, Config *cfg) {
+int update_window_list(AppState *state, Config *cfg, bool is_linear) {
   if (!state)
     return -1;
+
+  /* Determine workspace filter target */
+  int target_ws = WS_FILTER_NONE;
+  if (state->filter_workspace) {
+    target_ws = get_active_workspace_id();
+    if (target_ws == WS_FILTER_NONE)
+      LOG("Workspace filter requested but query failed — showing all windows");
+  }
 
   char *json = hyprland_request("j/clients");
   if (!json)
     return -1;
 
-  if (parse_clients(json, state) < 0) {
+  if (parse_clients(json, state, target_ws) < 0) {
     free(json);
     return -1;
   }
   free(json);
 
   if (state->count > 1) {
-    qsort(state->windows, state->count, sizeof(WindowInfo), compare_mru);
+    if (is_linear) {
+      qsort(state->windows, state->count, sizeof(WindowInfo), compare_linear);
+      LOG("Sorted %d windows in linear order (workspace/address)", state->count);
+    } else {
+      qsort(state->windows, state->count, sizeof(WindowInfo), compare_mru);
+    }
   }
 
   if (cfg && cfg->mode == MODE_CONTEXT) {

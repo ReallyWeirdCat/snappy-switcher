@@ -6,6 +6,12 @@
 #include <stdbool.h>
 #include <wayland-client.h>
 
+/* Dismiss trigger classification */
+typedef enum {
+    DISMISS_TYPE_MODIFIER,  /* Standard XKB modifier (Alt, Ctrl, Shift, Super) */
+    DISMISS_TYPE_KEYCODE,   /* Regular key tracked via key press/release events */
+} DismissType;
+
 /* Callback for Alt release event (set by main.c) */
 typedef void (*alt_release_callback_t)(void);
 extern alt_release_callback_t on_alt_release;

@@ -7,8 +7,8 @@
 #include "input.h"
 #include "render.h"
 #include "socket.h"
-#include "wlr_backend.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "wlr_backend.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <errno.h>
@@ -249,8 +249,8 @@ static void create_panel(void) {
 
   zwlr_layer_surface_v1_set_size(layer_surface, 1, 1); // 最小初始尺寸
   zwlr_layer_surface_v1_set_anchor(layer_surface, 0);
-  zwlr_layer_surface_v1_set_keyboard_interactivity(layer_surface,
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+  zwlr_layer_surface_v1_set_keyboard_interactivity(
+      layer_surface, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
   zwlr_layer_surface_v1_add_listener(layer_surface, &layer_surface_listener,
                                      NULL);
 
@@ -267,7 +267,15 @@ static void hide_switcher(void) {
 
   visible = false;
   is_configured = false;
-  input_set_toggle_mode(false); /* Reset toggle state to avoid leaking into next session */
+  input_set_toggle_mode(
+      false); /* Reset toggle state to avoid leaking into next session */
+
+  /* Clear any error banner from this session */
+  free(app_state.error_message);
+  app_state.error_message = NULL;
+
+  /* Reset workspace filter so it doesn't leak into the next session */
+  app_state.filter_workspace = false;
 
   if (config && config->follow_monitor) {
     destroy_panel();
@@ -279,7 +287,7 @@ static void hide_switcher(void) {
   }
 }
 
-static void show_switcher(void) {
+static void show_switcher(bool is_linear) {
   LOG("Showing switcher...");
 
   if (config && config->follow_monitor && !surface) {
@@ -294,23 +302,50 @@ static void show_switcher(void) {
 
   input_reset_alt_state();
 
+  /* Preserve filter_workspace across state reset — it was set by
+   * handle_command() before we were called, and app_state_init()
+   * would clobber it back to false. */
+  bool ws_filter = app_state.filter_workspace;
+
   app_state_free(&app_state);
   app_state_init(&app_state);
+
+  app_state.filter_workspace = ws_filter;
 
   if (!backend) {
     LOG("Error: Backend not initialized");
     return;
   }
 
-  if (backend->get_windows(&app_state, config) < 0) {
+  if (backend->get_windows(&app_state, config, is_linear) < 0) {
     LOG("Failed to update window list");
     return;
   }
 
-  if (config && config->sticky_mode) {
-    app_state.selected_index = 0;
+  if (is_linear) {
+    /* Linear mode: find where the active window landed in the
+     * deterministic sort order and select relative to it. */
+    int active_idx = 0;
+    for (int i = 0; i < app_state.count; i++) {
+      if (app_state.windows[i].is_active) {
+        active_idx = i;
+        break;
+      }
+    }
+    if (config && config->sticky_mode) {
+      app_state.selected_index = active_idx;
+    } else {
+      app_state.selected_index = (app_state.count > 1)
+          ? (active_idx + 1) % app_state.count
+          : 0;
+    }
   } else {
-    app_state.selected_index = (app_state.count > 1) ? 1 : 0;
+    /* MRU mode: active window is always index 0 */
+    if (config && config->sticky_mode) {
+      app_state.selected_index = 0;
+    } else {
+      app_state.selected_index = (app_state.count > 1) ? 1 : 0;
+    }
   }
 
   calculate_dimensions(&app_state, &app_state.width, &app_state.height);
@@ -318,8 +353,8 @@ static void show_switcher(void) {
   app_state.cols = (app_state.count < max_cols) ? app_state.count : max_cols;
   zwlr_layer_surface_v1_set_size(layer_surface, app_state.width,
                                  app_state.height);
-  zwlr_layer_surface_v1_set_keyboard_interactivity(layer_surface,
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
+  zwlr_layer_surface_v1_set_keyboard_interactivity(
+      layer_surface, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND);
 
   visible = true;
   wl_surface_set_buffer_scale(surface, output_scale);
@@ -341,74 +376,256 @@ static void select_and_hide(void) {
   }
 }
 
-static void handle_command(const char *cmd) {
-  if (strcmp(cmd, CMD_QUIT) == 0) {
+static void handle_command(const char *payload) {
+  /* Protocol: CMD:MOD:WORKSPACE_FLAG:SOURCE:SILENT_FLAG:LINEAR_FLAG
+   * Also supports legacy bare commands (e.g. "QUIT" from takeover)
+   * and 4/5-field payloads (SILENT_FLAG/LINEAR_FLAG default to "0"). */
+  char cmd_buf[32] = {0};
+  char mod_buf[64] = {0};
+  char source_buf[16] = {0};
+  char silent_buf[4] = {0};
+  char linear_buf[4] = {0};
+  int ws_flag = 0;
+
+  /* Safe parse: use strtok_r with ':' delimiter */
+  char buf[256];
+  strncpy(buf, payload, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+
+  char *saveptr = NULL;
+  char *tok_cmd = strtok_r(buf, ":", &saveptr);
+  char *tok_mod = strtok_r(NULL, ":", &saveptr);
+  char *tok_ws = strtok_r(NULL, ":", &saveptr);
+  char *tok_src = strtok_r(NULL, ":", &saveptr);
+  char *tok_sil = strtok_r(NULL, ":", &saveptr);
+  char *tok_lin = strtok_r(NULL, ":", &saveptr);
+
+  if (!tok_cmd) {
+    LOG("Malformed command: '%s'", payload);
+    return;
+  }
+
+  strncpy(cmd_buf, tok_cmd, sizeof(cmd_buf) - 1);
+  if (tok_mod)
+    strncpy(mod_buf, tok_mod, sizeof(mod_buf) - 1);
+  if (tok_ws)
+    ws_flag = atoi(tok_ws);
+  if (tok_src)
+    strncpy(source_buf, tok_src, sizeof(source_buf) - 1);
+  if (tok_sil)
+    strncpy(silent_buf, tok_sil, sizeof(silent_buf) - 1);
+  if (tok_lin)
+    strncpy(linear_buf, tok_lin, sizeof(linear_buf) - 1);
+
+  bool is_silent = (strcmp(silent_buf, "1") == 0);
+  bool is_linear = (strcmp(linear_buf, "1") == 0);
+
+  /* Route commands that don't need modifier/workspace context */
+  if (strcmp(cmd_buf, CMD_QUIT) == 0) {
     should_quit = 1;
     return;
   }
-
-  if (strcmp(cmd, CMD_HIDE) == 0) {
+  if (strcmp(cmd_buf, CMD_HIDE) == 0) {
     hide_switcher();
     return;
   }
+  if (strcmp(cmd_buf, CMD_SELECT) == 0) {
+    select_and_hide();
+    return;
+  }
 
-  if (strcmp(cmd, CMD_TOGGLE) == 0) {
+  /* --- Silent Mode: bypass Wayland UI entirely --- */
+  if (is_silent &&
+      (strcmp(cmd_buf, CMD_NEXT) == 0 || strcmp(cmd_buf, CMD_PREV) == 0)) {
+    /* If the GUI panel is currently open, tear it down cleanly before
+     * executing the silent switch.  This prevents a state desync where
+     * the visible panel keeps running with stale data while the silent
+     * path focuses a different window underneath. */
+    if (visible) {
+      hide_switcher();
+    }
+
+    if (!backend) {
+      LOG("Silent mode: backend not initialized");
+      return;
+    }
+
+    /* Build a temporary state for the window query */
+    AppState silent_state;
+    app_state_init(&silent_state);
+    silent_state.filter_workspace = (ws_flag != 0);
+
+    if (backend->get_windows(&silent_state, config, is_linear) < 0) {
+      LOG("Silent mode: failed to fetch window list");
+      app_state_free(&silent_state);
+      return;
+    }
+
+    if (silent_state.count <= 1) {
+      LOG("Silent mode: %d window(s), nothing to switch to",
+          silent_state.count);
+      app_state_free(&silent_state);
+      return;
+    }
+
+    int dir = (strcmp(cmd_buf, CMD_NEXT) == 0) ? 1 : -1;
+    int target;
+
+    if (is_linear) {
+      /* Linear mode: find the active window and step relative to it */
+      int active_idx = 0;
+      for (int i = 0; i < silent_state.count; i++) {
+        if (silent_state.windows[i].is_active) {
+          active_idx = i;
+          break;
+        }
+      }
+      target = (active_idx + dir + silent_state.count) % silent_state.count;
+    } else {
+      /* MRU mode: active window is always index 0.
+       * NEXT = second most recent (index 1),
+       * PREV = least recent (last in sorted list) */
+      target = (dir == 1) ? 1 : silent_state.count - 1;
+    }
+
+    char *address = strdup(silent_state.windows[target].address);
+    LOG("Silent mode: focusing window '%s' (index %d/%d)",
+        silent_state.windows[target].title, target, silent_state.count);
+
+    app_state_free(&silent_state);
+
+    if (address) {
+      backend->activate_window(address);
+      free(address);
+    }
+    return; /* CRITICAL: do NOT fall through to the GUI path */
+  }
+
+  /* Determine invocation source and modifier presence */
+  bool from_cli = (strcmp(source_buf, "cli") == 0);
+  bool has_real_mod = (mod_buf[0] != '\0' && strcmp(mod_buf, "none") != 0);
+
+  /* Apply modifier if provided */
+  if (has_real_mod) {
+    input_set_dismiss_modifier(mod_buf);
+  }
+
+  /* Store workspace flag on app_state for hyprland.c to use */
+  app_state.filter_workspace = (ws_flag != 0);
+  if (app_state.filter_workspace)
+    LOG("Workspace filter: ON");
+
+  /* Route command */
+  if (strcmp(cmd_buf, CMD_TOGGLE) == 0) {
     if (visible)
       hide_switcher();
     else {
       input_set_toggle_mode(true);
-      show_switcher();
+      show_switcher(is_linear);
     }
     return;
   }
 
-  /* Navigation */
-  if (!visible) {
-    input_set_toggle_mode(false);
-    show_switcher();
-  } else {
-    int dir = 0;
-    if (strcmp(cmd, CMD_NEXT) == 0)
-      dir = 1;
-    else if (strcmp(cmd, CMD_PREV) == 0)
-      dir = -1;
-
-    if (dir != 0 && app_state.count > 0) {
-      app_state.selected_index =
-          (app_state.selected_index + dir + app_state.count) % app_state.count;
-      app_state.needs_render = true;
-    } else if (strcmp(cmd, CMD_SELECT) == 0) {
-      select_and_hide();
+  /* NEXT / PREV navigation */
+  if (strcmp(cmd_buf, CMD_NEXT) == 0 || strcmp(cmd_buf, CMD_PREV) == 0) {
+    if (!visible) {
+      /* CLI without a modifier: use toggle mode (no dismiss-on-release).
+       * CLI/bind with a modifier: normal dismiss-on-release. */
+      if (from_cli && !has_real_mod) {
+        input_set_toggle_mode(true);
+      } else {
+        input_set_toggle_mode(false);
+      }
+      show_switcher(is_linear);
+    } else {
+      int dir = (strcmp(cmd_buf, CMD_NEXT) == 0) ? 1 : -1;
+      if (app_state.count > 0) {
+        app_state.selected_index =
+            (app_state.selected_index + dir + app_state.count) %
+            app_state.count;
+        app_state.needs_render = true;
+      }
     }
+    return;
   }
+
+  LOG("Unknown command: '%s'", cmd_buf);
 }
 
-/* Client Mode (CLI) */
-static int run_client(const char *prog, const char *cmd) {
-  const char *socket_cmd = NULL;
+/* Client Mode (CLI) — builds CMD:MOD:WORKSPACE_FLAG:SOURCE:SILENT:LINEAR
+ * payload */
+static int run_client(int argc, char **argv) {
+  const char *prog = argv[0];
+  const char *cmd = NULL;
+  const char *mod = "none";
+  int workspace = 0;
+  int silent = 0;
+  int linear = 0;
+
+  /* Parse arguments: <command> [--mod <key>] [--workspace] [--silent]
+   * [--linear] */
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--mod") == 0) {
+      if (i + 1 >= argc) {
+        fprintf(stderr, "%s: --mod requires an argument\n", prog);
+        return 1;
+      }
+      mod = argv[++i];
+    } else if (strcmp(argv[i], "--workspace") == 0) {
+      workspace = 1;
+    } else if (strcmp(argv[i], "--silent") == 0) {
+      silent = 1;
+    } else if (strcmp(argv[i], "--linear") == 0) {
+      linear = 1;
+    } else if (strcmp(argv[i], "--daemon") == 0 ||
+               strcmp(argv[i], "--config") == 0 || strcmp(argv[i], "-c") == 0) {
+      /* Skip daemon-only flags (--config eats next arg too) */
+      if (strcmp(argv[i], "--config") == 0 || strcmp(argv[i], "-c") == 0)
+        i++;
+    } else if (argv[i][0] != '-' && !cmd) {
+      cmd = argv[i];
+    } else if (argv[i][0] == '-') {
+      fprintf(stderr, "%s: unknown option '%s'\n", prog, argv[i]);
+      return 1;
+    }
+  }
+
+  if (!cmd) {
+    fprintf(stderr, "%s: no command specified\n", prog);
+    return 1;
+  }
+
+  /* Map user command to protocol token */
+  const char *proto_cmd = NULL;
   if (strcmp(cmd, "next") == 0)
-    socket_cmd = CMD_NEXT;
+    proto_cmd = CMD_NEXT;
   else if (strcmp(cmd, "prev") == 0)
-    socket_cmd = CMD_PREV;
-  else if (strcmp(cmd, "select") == 0)
-    socket_cmd = CMD_SELECT;
+    proto_cmd = CMD_PREV;
   else if (strcmp(cmd, "toggle") == 0)
-    socket_cmd = CMD_TOGGLE;
+    proto_cmd = CMD_TOGGLE;
+  else if (strcmp(cmd, "select") == 0)
+    proto_cmd = CMD_SELECT;
   else if (strcmp(cmd, "hide") == 0)
-    socket_cmd = CMD_HIDE;
+    proto_cmd = CMD_HIDE;
   else if (strcmp(cmd, "quit") == 0)
-    socket_cmd = CMD_QUIT;
+    proto_cmd = CMD_QUIT;
   else {
     fprintf(stderr, "%s: unknown command '%s'\n", prog, cmd);
     return 1;
   }
+
+  /* Build payload: CMD:MOD:WORKSPACE_FLAG:SOURCE:SILENT:LINEAR */
+  char payload[256];
+  const char *source = (strcmp(mod, "none") == 0) ? "cli" : "bind";
+  snprintf(payload, sizeof(payload), "%s:%s:%d:%s:%d:%d", proto_cmd, mod,
+           workspace, source, silent, linear);
 
   if (!is_daemon_running()) {
     fprintf(stderr,
             "Daemon not running. Start with: snappy-switcher --daemon\n");
     return 1;
   }
-  return send_command(socket_cmd) == 0 ? 0 : 1;
+  return send_command(payload) == 0 ? 0 : 1;
 }
 
 /* Ruthless Takeover: Kill existing zombie daemon before startup */
@@ -481,7 +698,7 @@ static int run_daemon(const char *config_path) {
     config = get_default_config();
   render_set_config(config);
   icons_init(config->icon_theme, config->icon_fallback);
-  input_set_dismiss_modifier(config->dismiss_modifier);
+  /* dismiss_modifier is now set dynamically per-command via IPC */
   app_state_init(&app_state);
 
   backend = backend_init();
@@ -539,8 +756,8 @@ static int run_daemon(const char *config_path) {
   zwlr_layer_surface_v1_set_size(layer_surface, 1,
                                  1); /* Minimal initial size */
   zwlr_layer_surface_v1_set_anchor(layer_surface, 0);
-  zwlr_layer_surface_v1_set_keyboard_interactivity(layer_surface,
-      ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+  zwlr_layer_surface_v1_set_keyboard_interactivity(
+      layer_surface, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
   zwlr_layer_surface_v1_add_listener(layer_surface, &layer_surface_listener,
                                      NULL);
   wl_surface_commit(surface);
@@ -562,26 +779,68 @@ static int run_daemon(const char *config_path) {
   fds[0].events = POLLIN;
   fds[1].fd = socket_fd;
   fds[1].events = POLLIN;
-  fds[2].fd = wlr_fd;  /* -1 if Hyprland backend — poll() ignores fd < 0 */
+  fds[2].fd = wlr_fd; /* -1 if Hyprland backend — poll() ignores fd < 0 */
   fds[2].events = POLLIN;
 
   while (running && !should_quit) {
+    /* Prepare read: drain any already-queued events first */
     while (wl_display_prepare_read(display) != 0) {
-      wl_display_dispatch_pending(display);
+      if (wl_display_dispatch_pending(display) < 0) {
+        LOG("Fatal: wl_display_dispatch_pending failed — Wayland display "
+            "disconnected");
+        should_quit = 1;
+        break;
+      }
     }
-    wl_display_flush(display);
+    if (should_quit)
+      break;
 
-    if (poll(fds, 3, 100) < 0) {
+    if (wl_display_flush(display) < 0) {
+      /* EAGAIN is normal (outgoing buffer temporarily full), only fatal
+       * if the error is something else (EPIPE, ECONNRESET, etc.) */
+      if (errno != EAGAIN) {
+        LOG("Fatal: wl_display_flush failed (%s) — Wayland display "
+            "disconnected",
+            strerror(errno));
+        wl_display_cancel_read(display);
+        break;
+      }
+    }
+
+    int poll_ret = poll(fds, 3, 100);
+    if (poll_ret < 0) {
       if (errno == EINTR) {
         wl_display_cancel_read(display);
         continue;
       }
+      LOG("Fatal: poll() error: %s", strerror(errno));
+      wl_display_cancel_read(display);
+      break;
+    }
+
+    /* ---- Compositor disconnect detection ----
+     * When the compositor (Hyprland) exits, the Wayland fd fires
+     * POLLHUP and/or POLLERR.  We MUST catch this to avoid an
+     * infinite spin loop where poll() returns instantly every time. */
+    if (fds[0].revents & (POLLHUP | POLLERR | POLLNVAL)) {
+      LOG("Fatal: Wayland compositor connection lost (revents=0x%x) — shutting "
+          "down",
+          fds[0].revents);
+      wl_display_cancel_read(display);
       break;
     }
 
     if (fds[0].revents & POLLIN) {
-      wl_display_read_events(display);
-      wl_display_dispatch_pending(display);
+      if (wl_display_read_events(display) < 0) {
+        LOG("Fatal: wl_display_read_events failed — Wayland display "
+            "disconnected");
+        break;
+      }
+      if (wl_display_dispatch_pending(display) < 0) {
+        LOG("Fatal: wl_display_dispatch_pending failed — Wayland display "
+            "disconnected");
+        break;
+      }
     } else {
       wl_display_cancel_read(display);
     }
@@ -625,6 +884,29 @@ static int run_daemon(const char *config_path) {
     /* --- Deferred render: one frame per loop iteration --- */
     if (visible && app_state.needs_render && is_configured) {
       app_state.needs_render = false;
+
+      /* If an error was set after show_switcher() sized the panel,
+       * resize to the compact error overlay dimensions first.
+       * Only call set_size + commit when dimensions actually changed
+       * to avoid an infinite set_size → configure → needs_render loop. */
+      if (app_state.error_message) {
+        uint32_t new_w, new_h;
+        calculate_dimensions(&app_state, &new_w, &new_h);
+
+        if (new_w != app_state.width || new_h != app_state.height) {
+          app_state.width = new_w;
+          app_state.height = new_h;
+          zwlr_layer_surface_v1_set_size(layer_surface, app_state.width,
+                                         app_state.height);
+          wl_surface_commit(surface);
+          wl_display_roundtrip(display);
+          /* The roundtrip dispatched a configure event which set
+           * needs_render = true.  Render on the next iteration
+           * with the compositor-confirmed dimensions. */
+          continue;
+        }
+      }
+
       render_ui(&app_state, app_state.width, app_state.height, output_scale);
     }
   }
@@ -667,25 +949,43 @@ static int run_daemon(const char *config_path) {
 }
 
 static void print_help(const char *prog) {
-  printf("Snappy Switcher v2.1.2 - A fast, keyboard-driven window switcher for "
-         "Wayland\n\n");
-  printf("Usage: %s [OPTION] | <command>\n\n", prog);
+  printf("Snappy Switcher v3.3.0 - A modular, Hyprland-driven window switcher "
+         "for Wayland\n\n");
+  printf("Usage: %s [OPTION] | <command> [--mod <key>] [--workspace] "
+         "[--silent] [--linear]\n\n",
+         prog);
   printf("Options:\n");
-  printf("  --daemon       Start the switcher daemon\n");
-  printf("  --config, -c PATH  Use config file (daemon only, default: "
-         "~/.config/snappy-switcher/config.ini)\n");
-  printf("  --help, -h     Show this help message\n\n");
+  printf("  --daemon           Start the switcher daemon\n");
+  printf("  --config, -c PATH  Use config file (daemon only)\n");
+  printf("  --help, -h         Show this help message\n\n");
   printf("Commands (requires daemon running):\n");
-  printf("  next           Select next window\n");
-  printf("  prev           Select previous window\n");
-  printf("  select         Activate the selected window\n");
-  printf("  toggle         Toggle the switcher visibility\n");
-  printf("  hide           Hide the switcher\n");
-  printf("  quit           Terminate the daemon\n\n");
-  printf("Example:\n");
-  printf("  %s --daemon &  # Start daemon in background\n", prog);
-  printf("  %s -c /path/to/config.ini --daemon  # Use custom config\n", prog);
-  printf("  %s toggle      # Toggle the window switcher\n", prog);
+  printf("  next               Select next window\n");
+  printf("  prev               Select previous window\n");
+  printf("  toggle             Toggle the switcher visibility\n");
+  printf("  select             Activate the selected window\n");
+  printf("  hide               Hide the switcher\n");
+  printf("  quit               Terminate the daemon\n\n");
+  printf("Flags (with next, prev, toggle):\n");
+  printf("  --mod <key>        Dismiss key (alt, super, ctrl, shift, space, "
+         "etc.)\n");
+  printf("  --workspace        Filter windows to current workspace\n");
+  printf(
+      "  --silent           Instant MRU switch without UI (next/prev only)\n");
+  printf("  --linear           Use deterministic workspace/address sort "
+         "instead of MRU\n\n");
+  printf("Examples:\n");
+  printf("  %s --daemon &\n", prog);
+  printf("  %s next --mod alt             # Alt+Tab style\n", prog);
+  printf("  %s next --mod space           # Space as dismiss key\n", prog);
+  printf("  %s next --workspace --mod super  # Super+Tab workspace filter\n",
+         prog);
+  printf("  %s toggle                     # Toggle without modifier\n", prog);
+  printf("  %s next --silent              # Instant switch, no UI\n", prog);
+  printf("  %s prev --silent --workspace  # Silent prev on current workspace\n",
+         prog);
+  printf("  %s next --linear              # Linear cycle through windows\n",
+         prog);
+  printf("  %s next --silent --linear     # Silent linear cycle\n", prog);
 }
 
 int main(int argc, char **argv) {
@@ -693,12 +993,26 @@ int main(int argc, char **argv) {
    * not be terminated by signal if daemon crashes during send_command() */
   signal(SIGPIPE, SIG_IGN);
 
+  if (argc < 2) {
+    fprintf(stderr,
+            "Usage: %s <command> [--mod <key>] [--workspace] [--silent] "
+            "[--linear] | --daemon\n",
+            argv[0]);
+    fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+    return 1;
+  }
+
+  /* First pass: check for --help and --daemon */
   const char *config_path = NULL;
+  bool daemon_mode = false;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
       print_help(argv[0]);
       return 0;
+    }
+    if (strcmp(argv[i], "--daemon") == 0) {
+      daemon_mode = true;
     }
     if (strcmp(argv[i], "--config") == 0 || strcmp(argv[i], "-c") == 0) {
       if (i + 1 >= argc) {
@@ -706,15 +1020,12 @@ int main(int argc, char **argv) {
         return 1;
       }
       config_path = argv[++i];
-      continue;
     }
-    if (strcmp(argv[i], "--daemon") == 0) {
-      return run_daemon(config_path);
-    }
-    return run_client(argv[0], argv[i]);
   }
 
-  fprintf(stderr, "Usage: %s <command> | --daemon\n", argv[0]);
-  fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
-  return 1;
+  if (daemon_mode)
+    return run_daemon(config_path);
+
+  /* Client mode: pass full argv for run_client to parse */
+  return run_client(argc, argv);
 }

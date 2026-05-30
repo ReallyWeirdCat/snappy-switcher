@@ -22,6 +22,10 @@ typedef struct {
   uint32_t bundle_bg;
   uint32_t badge_bg;
   uint32_t badge_text_color;
+  uint32_t badge_bg_selected;
+  uint32_t badge_text_color_selected;
+  bool has_badge_bg_selected;
+  bool has_badge_text_color_selected;
 
   /* Layout */
   int card_width;
@@ -33,6 +37,11 @@ typedef struct {
   int max_cols;
   int icon_size;
   int icon_radius;
+
+  /* Error banner */
+  // int error_width;
+  // int error_height;
+  int error_font_size;
 
   /* Typography */
   char font_family[64];
@@ -51,14 +60,13 @@ typedef struct {
   ViewMode mode;
   bool sticky_mode;
 
-  /* Dismiss modifier: which modifier release hides the switcher (e.g. alt, super) */
-  char dismiss_modifier[64];
 } Config;
 
 /* Load config from default path (~/.config/snappy-switcher/config.ini) */
 Config *load_config(void);
 
-/* Load config from given path; NULL = use default. Returns default if missing. */
+/* Load config from given path; NULL = use default. Returns default if missing.
+ */
 Config *load_config_from(const char *path);
 
 /* Free config memory */

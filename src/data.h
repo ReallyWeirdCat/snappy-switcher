@@ -47,6 +47,13 @@ typedef struct {
 
   /* Dirty flag: set to true by input handlers, consumed by main loop */
   bool needs_render;
+
+  /* Error state: non-NULL means an error banner should be displayed.
+   * Heap-allocated; freed by hide_switcher() / app_state_free(). */
+  char *error_message;
+
+  /* Workspace filter: when true, only show windows on the active workspace */
+  bool filter_workspace;
 } AppState;
 
 /* Initialize AppState */

@@ -125,7 +125,7 @@ static void draw_letter_icon(cairo_t *cr, const char *cls, double cx, double cy,
   pango_layout_get_pixel_size(layout, &lw, &lh);
 
   cairo_set_source_rgb(cr, 1, 1, 1);
-  cairo_move_to(cr, cx - lw / 2.0, cy - lh / 2.0);
+  cairo_move_to(cr, (int)(cx - lw / 2.0), (int)(cy - lh / 2.0));
   pango_cairo_show_layout(cr, layout);
 
   g_object_unref(layout);
@@ -330,6 +330,12 @@ static void draw_card(cairo_t *cr, WindowInfo *win, double x, double y,
     color_to_rgba(cfg->bundle_bg, &bnd_r, &bnd_g, &bnd_b, &bnd_a);
     color_to_rgba(cfg->badge_bg, &bdg_r, &bdg_g, &bdg_b, &bdg_a);
     color_to_rgba(cfg->badge_text_color, &bdt_r, &bdt_g, &bdt_b, &bdt_a);
+
+    /* Selected-state badge overrides (fall back to standard if unset) */
+    if (selected && cfg->has_badge_bg_selected)
+      color_to_rgba(cfg->badge_bg_selected, &bdg_r, &bdg_g, &bdg_b, &bdg_a);
+    if (selected && cfg->has_badge_text_color_selected)
+      color_to_rgba(cfg->badge_text_color_selected, &bdt_r, &bdt_g, &bdt_b, &bdt_a);
   }
 
   int w = cfg ? cfg->card_width : 200;
@@ -372,7 +378,7 @@ static void draw_card(cairo_t *cr, WindowInfo *win, double x, double y,
   pango_layout_set_text(title, win->title, -1);
 
   cairo_set_source_rgba(cr, txt_r, txt_g, txt_b, txt_a);
-  cairo_move_to(cr, x + 10, y + 10);
+  cairo_move_to(cr, (int)(x + 10), (int)(y + 10));
   pango_cairo_show_layout(cr, title);
   g_object_unref(title);
 
@@ -380,33 +386,40 @@ static void draw_card(cairo_t *cr, WindowInfo *win, double x, double y,
   draw_icon(cr, win->class_name, x + w / 2.0,
             y + 10 + 20 + 10 + (cfg ? cfg->icon_size / 2.0 : 32));
 
-  /* Badge (Count) */
+  /* Badge (Count) — dynamically sized rounded square */
   if (win->group_count > 1) {
     char count[12];
     snprintf(count, sizeof(count), "%d", win->group_count);
 
-    double bx = x + w - 24;
-    double by = y + h - 24;
-
-    /* Badge BG */
-    cairo_set_source_rgba(cr, bdg_r, bdg_g, bdg_b, bdg_a);
-    cairo_arc(cr, bx, by, 10, 0, 2 * M_PI);
-    cairo_fill(cr);
-
-    /* Badge Text */
     PangoLayout *bl = create_layout(cr, 10);
     pango_layout_set_text(bl, count, -1);
 
     int bw, bh;
     pango_layout_get_pixel_size(bl, &bw, &bh);
 
+    int cnt_pad_x = 8;
+    int cnt_pad_y = 4;
+    int cnt_w = bw + cnt_pad_x * 2;
+    int cnt_h = bh + cnt_pad_y * 2;
+    if (cnt_w < cnt_h)
+      cnt_w = cnt_h; /* force circle for single digits */
+    double cnt_x = x + w - cnt_w - 6;
+    double cnt_y = y + h - cnt_h - 6;
+
+    /* Badge BG — pill shape */
+    cairo_set_source_rgba(cr, bdg_r, bdg_g, bdg_b, bdg_a);
+    draw_rounded_rect(cr, cnt_x, cnt_y, cnt_w, cnt_h, cnt_h / 2.0);
+    cairo_fill(cr);
+
+    /* Badge Text — pixel-snapped center */
     cairo_set_source_rgba(cr, bdt_r, bdt_g, bdt_b, bdt_a);
-    cairo_move_to(cr, bx - bw / 2.0, by - bh / 2.0);
+    cairo_move_to(cr, (int)(cnt_x + (cnt_w - bw) / 2.0),
+                      (int)(cnt_y + (cnt_h - bh) / 2.0));
     pango_cairo_show_layout(cr, bl);
     g_object_unref(bl);
   }
 
-  /* Workspace Badge (bottom-left pill) */
+  /* Workspace Badge (bottom-left) — dynamically sized rounded square */
   if (cfg && cfg->show_workspace_badge) {
     char *ws_text = format_workspace_tag(win, &g_letter_tracker);
 
@@ -416,19 +429,22 @@ static void draw_card(cairo_t *cr, WindowInfo *win, double x, double y,
     int ww, wh;
     pango_layout_get_pixel_size(wl, &ww, &wh);
 
-    int badge_w = ww + 12;
-    int badge_h = wh + 6;
+    int ws_pad_x = 8;
+    int ws_pad_y = 4;
+    int badge_w = ww + ws_pad_x * 2;
+    int badge_h = wh + ws_pad_y * 2;
     double wx = x + 10;
     double wy = y + h - badge_h - 10;
 
-    /* Badge background */
+    /* Badge background — sharp rounded square */
     cairo_set_source_rgba(cr, bdg_r, bdg_g, bdg_b, bdg_a);
     draw_rounded_rect(cr, wx, wy, badge_w, badge_h, 4.0);
     cairo_fill(cr);
 
-    /* Badge text */
+    /* Badge text — pixel-snapped center */
     cairo_set_source_rgba(cr, bdt_r, bdt_g, bdt_b, bdt_a);
-    cairo_move_to(cr, wx + (badge_w - ww) / 2.0, wy + (badge_h - wh) / 2.0);
+    cairo_move_to(cr, (int)(wx + (badge_w - ww) / 2.0),
+                      (int)(wy + (badge_h - wh) / 2.0));
     pango_cairo_show_layout(cr, wl);
     g_object_unref(wl);
 
@@ -439,6 +455,64 @@ static void draw_card(cairo_t *cr, WindowInfo *win, double x, double y,
 }
 
 void calculate_dimensions(AppState *state, uint32_t *width, uint32_t *height) {
+  /* Error overlay: measure text dynamically with a temporary Cairo surface.
+   * We create a throwaway 1x1 image surface purely for Pango text metrics,
+   * then derive the exact surface size from the measured pixel bounds. */
+  if (state && state->error_message) {
+    int pad = 32;  /* consistent padding on all sides */
+    int err_font = cfg ? cfg->error_font_size : 13;
+    int hint_font = (err_font * 7 + 5) / 10;  /* ~70% of error font */
+    int wm_font = (hint_font * 8 + 5) / 10;   /* ~80% of hint font */
+    int text_gap = 8;  /* vertical gap between text lines */
+
+    /* Temporary surface for measurement only */
+    cairo_surface_t *tmp_surf =
+        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+    cairo_t *tmp_cr = cairo_create(tmp_surf);
+
+    /* Measure the main error text ("⚠  <message>") */
+    char full_msg[512];
+    snprintf(full_msg, sizeof(full_msg), "\xe2\x9a\xa0  %s", state->error_message);
+
+    PangoLayout *msg_layout = create_layout(tmp_cr, err_font);
+    pango_layout_set_text(msg_layout, full_msg, -1);
+    int msg_w, msg_h;
+    pango_layout_get_pixel_size(msg_layout, &msg_w, &msg_h);
+    g_object_unref(msg_layout);
+
+    /* Measure the subtitle ("Press Escape to close.") */
+    PangoLayout *hint_layout = create_layout(tmp_cr, hint_font);
+    pango_layout_set_text(hint_layout, "Press Escape to close.", -1);
+    int hint_w, hint_h;
+    pango_layout_get_pixel_size(hint_layout, &hint_w, &hint_h);
+    g_object_unref(hint_layout);
+
+    /* Measure the watermark ("Snappy-Switcher") */
+    PangoLayout *wm_layout = create_layout(tmp_cr, wm_font);
+    pango_layout_set_text(wm_layout, "Snappy-Switcher", -1);
+    int wm_w, wm_h;
+    pango_layout_get_pixel_size(wm_layout, &wm_w, &wm_h);
+    g_object_unref(wm_layout);
+
+    /* Destroy temporary Cairo objects — no leaks */
+    cairo_destroy(tmp_cr);
+    cairo_surface_destroy(tmp_surf);
+
+    /* Derive surface dimensions from the widest text line */
+    int content_w = msg_w;
+    if (hint_w > content_w) content_w = hint_w;
+    if (wm_w > content_w) content_w = wm_w;
+    int content_h = msg_h + text_gap + hint_h + text_gap + wm_h;
+
+    *width  = (uint32_t)(content_w + pad * 2);
+    *height = (uint32_t)(content_h + pad * 2);
+
+    /* Prevent Wayland 0x0 buffer crashes */
+    if (*width  < 10) *width  = 10;
+    if (*height < 10) *height = 10;
+    return;
+  }
+
   int count = (state && state->count > 0) ? state->count : 1;
   int w = cfg ? cfg->card_width : 200;
   int h = cfg ? cfg->card_height : 160;
@@ -561,6 +635,102 @@ void render_cleanup_buffers(void) {
   }
 }
 
+/* --- Error Overlay ---
+ * Draws a full-surface error banner with a clean outer red warning border.
+ * The surface has already been sized dynamically by calculate_dimensions(). */
+static void draw_error_overlay(cairo_t *cr, int width, int height,
+                               const char *msg) {
+  int radius = cfg ? cfg->card_radius : 12;
+  double stroke_w = 2.5;
+  /* Inset the stroke by half its width so it doesn't get clipped at edges */
+  double inset = stroke_w / 2.0;
+
+  /* Card background — fills the entire Wayland surface */
+  double bg_r, bg_g, bg_b, bg_a;
+  if (cfg)
+    color_to_rgba(cfg->card_bg, &bg_r, &bg_g, &bg_b, &bg_a);
+  else {
+    bg_r = 0.19; bg_g = 0.19; bg_b = 0.26; bg_a = 1.0;
+  }
+  cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, bg_a);
+  draw_rounded_rect(cr, 0, 0, width, height, radius);
+  cairo_fill(cr);
+
+  /* Warning border — clean outer perimeter stroke */
+  cairo_set_line_width(cr, stroke_w);
+  cairo_set_source_rgba(cr, 0.91, 0.30, 0.24, 0.9);  /* #E84C3D */
+  draw_rounded_rect(cr, inset, inset,
+                    width - stroke_w, height - stroke_w, radius);
+  cairo_stroke(cr);
+
+  /* --- Text rendering (all coords pixel-snapped via (int) cast) --- */
+  int text_gap = 8;
+
+  /* ⚠ indicator + error text */
+  double txt_r, txt_g, txt_b, txt_a;
+  if (cfg)
+    color_to_rgba(cfg->text_color, &txt_r, &txt_g, &txt_b, &txt_a);
+  else {
+    txt_r = 0.80; txt_g = 0.84; txt_b = 0.96; txt_a = 1.0;
+  }
+
+  char full_msg[512];
+  snprintf(full_msg, sizeof(full_msg), "\xe2\x9a\xa0  %s", msg);
+
+  int err_font = cfg ? cfg->error_font_size : 13;
+  PangoLayout *layout = create_layout(cr, err_font);
+  pango_layout_set_text(layout, full_msg, -1);
+
+  int lw, lh;
+  pango_layout_get_pixel_size(layout, &lw, &lh);
+
+  /* Subtitle: "Press Escape to close." */
+  int hint_font = (err_font * 7 + 5) / 10;  /* ~70% of error font */
+  PangoLayout *hint = create_layout(cr, hint_font);
+  pango_layout_set_text(hint, "Press Escape to close.", -1);
+
+  int hw, hh;
+  pango_layout_get_pixel_size(hint, &hw, &hh);
+
+  /* Watermark: "Snappy-Switcher" */
+  int wm_font = (hint_font * 8 + 5) / 10;  /* ~80% of hint font */
+  PangoLayout *watermark = create_layout(cr, wm_font);
+  pango_layout_set_text(watermark, "Snappy-Switcher", -1);
+
+  int wmw, wmh;
+  pango_layout_get_pixel_size(watermark, &wmw, &wmh);
+
+  /* Vertically center the combined three-line text block */
+  int total_text_h = lh + text_gap + hh + text_gap + wmh;
+  int block_y = (height - total_text_h) / 2;
+
+  /* Error text — pixel-snapped center */
+  cairo_set_source_rgba(cr, txt_r, txt_g, txt_b, txt_a);
+  cairo_move_to(cr, (int)((width - lw) / 2.0), (int)block_y);
+  pango_cairo_show_layout(cr, layout);
+  g_object_unref(layout);
+
+  /* Subtitle — pixel-snapped center, below error text */
+  double sub_r, sub_g, sub_b, sub_a;
+  if (cfg)
+    color_to_rgba(cfg->subtext_color, &sub_r, &sub_g, &sub_b, &sub_a);
+  else {
+    sub_r = 0.65; sub_g = 0.68; sub_b = 0.78; sub_a = 1.0;
+  }
+
+  cairo_set_source_rgba(cr, sub_r, sub_g, sub_b, sub_a * 0.7);
+  cairo_move_to(cr, (int)((width - hw) / 2.0), (int)(block_y + lh + text_gap));
+  pango_cairo_show_layout(cr, hint);
+  g_object_unref(hint);
+
+  /* Watermark — dimmed, pixel-snapped center, below subtitle */
+  cairo_set_source_rgba(cr, sub_r, sub_g, sub_b, sub_a * 0.4);
+  cairo_move_to(cr, (int)((width - wmw) / 2.0),
+                    (int)(block_y + lh + text_gap + hh + text_gap));
+  pango_cairo_show_layout(cr, watermark);
+  g_object_unref(watermark);
+}
+
 void render_ui(AppState *state, uint32_t logical_width, uint32_t logical_height,
                int scale) {
   uint32_t phys_width = logical_width * scale;
@@ -619,6 +789,12 @@ void render_ui(AppState *state, uint32_t logical_width, uint32_t logical_height,
                     rad + 4);
   cairo_stroke(cr);
 
+  /* --- Error overlay short-circuit --- */
+  if (state && state->error_message) {
+    draw_error_overlay(cr, logical_width, logical_height, state->error_message);
+    goto commit;
+  }
+
   /* Content */
   if (!state || state->count == 0) {
     PangoLayout *msg = create_layout(cr, 16);
@@ -629,7 +805,7 @@ void render_ui(AppState *state, uint32_t logical_width, uint32_t logical_height,
     if (cfg)
       color_to_rgba(cfg->text_color, &r, &g, &b, &a);
     cairo_set_source_rgba(cr, r, g, b, 0.5);
-    cairo_move_to(cr, (logical_width - mw) / 2.0, (logical_height - mh) / 2.0);
+    cairo_move_to(cr, (int)((logical_width - mw) / 2.0), (int)((logical_height - mh) / 2.0));
     pango_cairo_show_layout(cr, msg);
     g_object_unref(msg);
   } else {
@@ -664,6 +840,7 @@ void render_ui(AppState *state, uint32_t logical_width, uint32_t logical_height,
     }
   }
 
+commit:
   /* --- Wayland Commit with proper buffer lifecycle --- */
   struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
   struct wl_buffer *buffer = wl_shm_pool_create_buffer(
