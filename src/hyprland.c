@@ -492,14 +492,32 @@ int update_window_list(AppState *state, Config *cfg, bool is_linear) {
 void switch_to_window(const char *address) {
   if (!address)
     return;
-  char cmd[256];
+
+  char cmd1[256];
+  char cmd2[256];
+  char cmd3[256];
+
   if (use_lua_dispatch) {
-    snprintf(cmd, sizeof(cmd),
-             "dispatch hl.dsp.focus({ window = \"address:%s\" })", address);
+    /* 1. Target the specific window */
+    snprintf(cmd1, sizeof(cmd1), "dispatch hl.dsp.focus({ window = \"address:%s\" })", address);
+    /* 2. Pop it to the front if it's floating (ignored if tiled) */
+    snprintf(cmd2, sizeof(cmd2), "dispatch hl.dsp.window.alter_zorder({ mode = \"top\" })");
+    /* 3. Sledgehammer focus to break the layer-shell trap */
+    snprintf(cmd3, sizeof(cmd3), "dispatch hl.dsp.focus({ window = \"activewindow\" })");
   } else {
-    snprintf(cmd, sizeof(cmd), "dispatch focuswindow address:%s", address);
+    /* Legacy Fallback */
+    snprintf(cmd1, sizeof(cmd1), "dispatch focuswindow address:%s", address);
+    snprintf(cmd2, sizeof(cmd2), "dispatch bringactivetotop");
+    snprintf(cmd3, sizeof(cmd3), "dispatch focuscurrentorlast");
   }
-  char *resp = hyprland_request(cmd);
-  if (resp)
-    free(resp);
+
+  /* Fire the 3-step combo */
+  char *resp1 = hyprland_request(cmd1);
+  if (resp1) free(resp1);
+
+  char *resp2 = hyprland_request(cmd2);
+  if (resp2) free(resp2);
+
+  char *resp3 = hyprland_request(cmd3);
+  if (resp3) free(resp3);
 }
