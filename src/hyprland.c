@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <time.h>
 
 #define LOG(fmt, ...) fprintf(stderr, "[Hyprland] " fmt "\n", ##__VA_ARGS__)
 #define BUFFER_SIZE 65536
@@ -495,29 +496,55 @@ void switch_to_window(const char *address) {
 
   char cmd1[256];
   char cmd2[256];
-  char cmd3[256];
 
   if (use_lua_dispatch) {
     /* 1. Target the specific window */
     snprintf(cmd1, sizeof(cmd1), "dispatch hl.dsp.focus({ window = \"address:%s\" })", address);
     /* 2. Pop it to the front if it's floating (ignored if tiled) */
     snprintf(cmd2, sizeof(cmd2), "dispatch hl.dsp.window.alter_zorder({ mode = \"top\" })");
+
+    /* Fire both dispatches */
+    char *resp1 = hyprland_request(cmd1);
+    if (resp1) free(resp1);
+
+    char *resp2 = hyprland_request(cmd2);
+    if (resp2) free(resp2);
+
     /* 3. Sledgehammer focus to break the layer-shell trap */
+    char cmd3[256];
     snprintf(cmd3, sizeof(cmd3), "dispatch hl.dsp.focus({ window = \"activewindow\" })");
+    char *resp3 = hyprland_request(cmd3);
+    if (resp3) free(resp3);
   } else {
-    /* Legacy Fallback */
+    /* Legacy Fallback (hyprlang / pre-0.55)
+     *
+     * 2-step combo:
+     *   1. focuswindow   — target window by address (works on all versions)
+     *   2. alterzorder   — raise to top of Z-stack (replaces deprecated
+     *                      bringactivetotop which is a no-op on v0.55+)
+     *
+     * We intentionally omit the old Step 3 (focuscurrentorlast).
+     * That dispatcher is a TOGGLE — it switches focus to the PREVIOUS
+     * window, which undoes Step 1.  The layer-shell focus trap is already
+     * broken by the explicit focuswindow dispatch since the panel surface
+     * is destroyed before this function is called. */
     snprintf(cmd1, sizeof(cmd1), "dispatch focuswindow address:%s", address);
-    snprintf(cmd2, sizeof(cmd2), "dispatch bringactivetotop");
-    snprintf(cmd3, sizeof(cmd3), "dispatch focuscurrentorlast");
+    snprintf(cmd2, sizeof(cmd2), "dispatch alterzorder top");
+
+    char *resp1 = hyprland_request(cmd1);
+    if (resp1) free(resp1);
+
+    /* 5 ms settle time: Hyprland's synchronous IPC processes one
+     * connection at a time, but the compositor's internal focus-tree
+     * commit may not be fully visible to the next dispatch yet.
+     * This brief sleep lets the focus state propagate before we
+     * touch Z-order.  Imperceptible to users. */
+    {
+      struct timespec ts = {.tv_sec = 0, .tv_nsec = 5000000L};
+      nanosleep(&ts, NULL);
+    }
+
+    char *resp2 = hyprland_request(cmd2);
+    if (resp2) free(resp2);
   }
-
-  /* Fire the 3-step combo */
-  char *resp1 = hyprland_request(cmd1);
-  if (resp1) free(resp1);
-
-  char *resp2 = hyprland_request(cmd2);
-  if (resp2) free(resp2);
-
-  char *resp3 = hyprland_request(cmd3);
-  if (resp3) free(resp3);
 }
