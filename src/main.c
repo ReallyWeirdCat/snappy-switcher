@@ -1,4 +1,4 @@
-/* src/main.c - Snappy Switcher Daemon (v2.0) */
+/* src/main.c - Snappy Switcher Daemon (v4.0) */
 #define _POSIX_C_SOURCE 200809L
 
 #include "backend.h"
@@ -949,7 +949,7 @@ static int run_daemon(const char *config_path) {
 }
 
 static void print_help(const char *prog) {
-  printf("Snappy Switcher v3.3.0 - A modular, Hyprland-driven window switcher "
+  printf("Snappy Switcher v4.0.0 - A modular, Hyprland-driven window switcher "
          "for Wayland\n\n");
   printf("Usage: %s [OPTION] | <command> [--mod <key>] [--workspace] "
          "[--silent] [--linear]\n\n",

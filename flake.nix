@@ -14,7 +14,7 @@
       {
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "snappy-switcher";
-          version = "3.2.0";
+          version = "4.0.0";
 
           src = ./.;
 

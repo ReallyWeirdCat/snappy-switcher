@@ -360,6 +360,40 @@ name = catppuccin-mocha.ini
 ```
 > If name doesnt match the file you made or left blank, it will switch to a **default** *ugly* theme
 
+<details>
+<summary><b>My Conf</b></summary>
+
+```ini
+[general]
+mode = context
+follow_monitor = true
+show_workspace_badge = true
+sticky_mode = false
+[theme]
+name = stormlight.ini
+border_width = 2
+corner_radius = 15
+[layout]
+card_width = 145
+card_height = 135
+card_gap = 10
+padding = 10
+max_cols = 5
+icon_size = 57
+icon_radius = 15       
+error_font_size = 11  
+[icons]
+theme = Tela-dracula
+fallback = Tela-dracula
+show_letter_fallback = true
+[font]
+family = FiraCode Nerd Font
+weight = Bold
+title_size = 10
+icon_letter_size = 24
+```
+</details>
+
 **[Full Configuration Documentation →](docs/CONFIGURATION.md)**
 
 ---
@@ -405,7 +439,10 @@ snappy-switcher next --silent --linear
 
 ### Config Error Banner
 
-If the `--mod` value doesn't match the key physically held when the switcher gains focus, a red CONFIG ERROR banner is displayed. Dismiss it with Escape or Enter.
+![Dismiss-Key(Error)](assets/config-error:dismisskey.png)
+![Modifier-Key(Error)](assets/config-error:modifier.png)
+
+You will see **CONFIG ERROR banner is displayed** if `bind` doesnt match with `--mod`
 
 | Scenario                             | Result                             |
 | --------------------------------------| ------------------------------------|
