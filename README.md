@@ -421,13 +421,6 @@ hl.bind("SUPER + TAB", hl.dsp.exec_cmd("snappy-switcher next --workspace --mod s
 
 > Could be mostly **Any key**!!
 
-
-```toml
-#try --silent alone to build mru and switch then break it with --linear (best for cli)
-snappy-switcher next --silent
-snappy-switcher next --silent --linear
-```
-
 >snappy-switcher next --linear will not work as intented if working with cli
 
 ```lua
@@ -454,7 +447,34 @@ You will see **CONFIG ERROR banner is displayed** if `bind` doesnt match with `-
 ### CLI MODE (No pop up or GUI)
 With **test flags**
 you can use Snappy-Switcher via shell or terminal
-try ``--silent`` + ``--linear`` *combo*
+try ``--silent`` + ``--linear`` *combo* 
+
+Like this:-
+(Switching with Shell)
+
+```bash
+#try --silent alone to build mru and switch then break it with --linear (best for cli)
+snappy-switcher next --silent
+snappy-switcher next --silent --linear
+```
+
+Bind it 
+```lua
+-- No GUI Switching with MRU
+hl.bind("CTRL + S", hl.dsp.exec_cmd("snappy-switcher next --silent --mod CTRL"),
+ { description = "Snappy Switcher CLI (MRU BUILDER)" })
+-- Break MRU to move forward (then rebuild it)
+hl.bind(
+	"CTRL + W",
+	hl.dsp.exec_cmd("snappy-switcher next --silent --linear --mod CTRL"),
+   { description = "Snappy Switcher" }
+ )
+
+```
+
+> At this point just use Hyprlands binds (this are test flags)
+
+
 ---
 ## Architecture
 
