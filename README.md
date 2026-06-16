@@ -78,7 +78,7 @@ makepkg -si
 <summary><b>Fedora / RHEL</b></summary>
 
 ```bash
-sudo dnf install wayland-devel cairo-devel pango-devel json-c-devel libxkbcommon-devel glib2-devel librsvg2-devel
+sudo dnf install wayland-devel cairo-devel pango-devel json-c-devel libxkbcommon-devel glib2-devel librsvg2-devel wayland-protocols-devel
 ```
 
 > A Copr way to install things will be included soon (Community maintained pkgs will be appreciated)
