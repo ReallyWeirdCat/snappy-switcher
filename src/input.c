@@ -341,7 +341,7 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     }
     break;
 
-  case XKB_KEY_Left:
+  case XKB_KEY_h:
     if (app_state->count > 0) {
       app_state->selected_index--;
       if (app_state->selected_index < 0)
@@ -350,7 +350,7 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     }
     break;
 
-  case XKB_KEY_Right:
+  case XKB_KEY_l:
     if (app_state->count > 0) {
       app_state->selected_index++;
       if (app_state->selected_index >= app_state->count)
@@ -359,7 +359,7 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     }
     break;
 
-  case XKB_KEY_Up:
+  case XKB_KEY_k:
     if (app_state->count > 0 && app_state->cols > 0) {
       int next = app_state->selected_index - app_state->cols;
       if (next >= 0)
@@ -368,7 +368,7 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     }
     break;
 
-  case XKB_KEY_Down:
+  case XKB_KEY_j:
     if (app_state->count > 0 && app_state->cols > 0) {
       int next = app_state->selected_index + app_state->cols;
       if (next < app_state->count)

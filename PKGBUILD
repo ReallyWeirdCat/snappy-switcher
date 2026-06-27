@@ -1,10 +1,9 @@
-# Maintainer: Opal Aayan <YougurtMyFace@proton.me>
 pkgname=snappy-switcher
 pkgver=4.0.0
 pkgrel=1
-pkgdesc="A fast, animated Alt+Tab window switcher for Hyprland with MRU sorting and context grouping"
+pkgdesc="A fast, animated Alt+Tab window switcher for Hyprland with MRU sorting and context grouping. Forked to use vim-keys"
 arch=('x86_64')
-url="https://github.com/OpalAayan/snappy-switcher"
+url="https://github.com/ReallyWeirdCat/snappy-switcher"
 license=('GPL3')
 depends=(
   'wayland'
